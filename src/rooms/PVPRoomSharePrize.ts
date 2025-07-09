@@ -13,10 +13,12 @@ const DELAY_BEFORE_RESULT_SECONDS = 1;
 const PENALTY_OUTGAME_ANSWERTIME = 9999;
 const MAX_RATIO_PRIZE = 1;
 
-const SWAGGER_IP = "10.10.41.224";
-const DATABASE_PORT = 3002;
-const BALANCE_PORT = 3001;
-const HASH_SOCKET_KEY = "as@48sdAsdJxXUni19d@n1jh9as1!sdaaosdiOadjhqUsdaw21@";
+// const SWAGGER_IP = "10.10.41.224";
+const BE_URL = "localhost";
+const USERSERVER_URL = "localhost";
+const BE_PORT = 5014;
+const USERSERVER_PORT = 5012;
+const HASH_SOCKET_KEY = "";
 
 export class PVPRoomSharePrize extends Room<PVPRoomState> {
   state = new PVPRoomState();
@@ -170,7 +172,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   }
 
   connectDataSocket(): Promise<Socket> {
-    var externalSocketURL = `ws://${SWAGGER_IP}:${DATABASE_PORT}`;
+    var externalSocketURL = `http://${BE_URL}:${BE_PORT}`;
     return new Promise((resolve, reject) => {
       try {
         const socket = io(externalSocketURL);
@@ -203,7 +205,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   }
 
   connectBalanceSocket(): Promise<Socket> {
-    var externalSocketURL = `ws://${SWAGGER_IP}:${BALANCE_PORT}`;
+    var externalSocketURL = `http://${USERSERVER_URL}:${USERSERVER_PORT}`;
     return new Promise((resolve, reject) => {
       try {
         const socket = io(externalSocketURL);

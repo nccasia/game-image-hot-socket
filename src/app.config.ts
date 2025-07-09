@@ -9,9 +9,9 @@ import { PVPRoomSharePrize } from "./rooms/PVPRoomSharePrize";
 const PVP_RANK_PRIZE = 'pvp_rank_prize';
 const PVP_SHARE_PRIZE = 'pvp_share_prize';
 
-const SWAGGER_IP = "10.10.41.224";
-const BALANCE_PORT = 3001;
-const HASH_SOCKET_KEY = "as@48sdAsdJxXUni19d@n1jh9as1!sdaaosdiOadjhqUsdaw21@";
+const SWAGGER_IP = "localhost";
+const BALANCE_PORT = 5014;
+const HASH_SOCKET_KEY = "";
 
 let balanceSocket: Socket | null = null;
 
@@ -104,7 +104,7 @@ export default config({
 });
 
 export function connectBalanceSocket(): Promise<Socket> {
-    const externalSocketURL = `ws://${SWAGGER_IP}:${BALANCE_PORT}`;
+    const externalSocketURL = `http://${SWAGGER_IP}:${BALANCE_PORT}`;
     return new Promise((resolve, reject) => {
         try {
             const socket = io(externalSocketURL);
