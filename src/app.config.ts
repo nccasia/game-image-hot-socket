@@ -2,22 +2,16 @@ import config from "@colyseus/tools";
 import { monitor } from "@colyseus/monitor";
 import { playground } from "@colyseus/playground";
 import { matchMaker } from "colyseus";
-import { io, Socket } from 'socket.io-client';
-import { PVPRoomRankPrize } from "./rooms/PVPRoomRankPrize";
+// import { PVPRoomRankPrize } from "./rooms/PVPRoomRankPrize";
 import { PVPRoomSharePrize } from "./rooms/PVPRoomSharePrize";
+import { IOInteract, IOReturn, Status } from "./IOInteract";
 
 const PVP_RANK_PRIZE = 'pvp_rank_prize';
 const PVP_SHARE_PRIZE = 'pvp_share_prize';
 
-const SWAGGER_IP = "localhost";
-const BALANCE_PORT = 5014;
-const HASH_SOCKET_KEY = "";
-
-let balanceSocket: Socket | null = null;
-
 export default config({
     initializeGameServer: (gameServer) => { //
-        gameServer.define(PVP_RANK_PRIZE, PVPRoomRankPrize); //
+        // gameServer.define(PVP_RANK_PRIZE, PVPRoomRankPrize); //
         gameServer.define(PVP_SHARE_PRIZE, PVPRoomSharePrize); //
     },
 
@@ -27,17 +21,17 @@ export default config({
         });
 
         app.post("/matchmaking", async (req, res) => { //
-            const { betValue, gameMode, playerName} = req.body;
+            const { betValue, gameMode, playerName, userId } = req.body;
+            let balance = 10000;
 
-            balanceSocket = await connectBalanceSocket();
-            let responeBalance;
-            if(balanceSocket && balanceSocket.connected){
-                responeBalance = await sendToBalanceSocket("getBalance", {
-                    user:"1831510401251020800",
-                    hash: HASH_SOCKET_KEY,
-                });
-            }
-            
+            await IOInteract.instance.getBalance(userId, async (returnData: IOReturn) => {
+                if (returnData.status == Status.Success) {
+                    balance = returnData.data.balance;
+                }
+                else {
+
+                }
+            });
             if (betValue === undefined || betValue === null) { //
                 return res.status(400).json({ error: "betValue is required for matchmaking." }); //
             }
@@ -48,30 +42,29 @@ export default config({
             if (!validGameModes.includes(gameMode)) {
                 return res.status(400).json({ error: `Invalid gameMode: ${gameMode}. Available modes are: ${validGameModes.join(', ')}` });
             }
-            if(responeBalance.data.balance < betValue){
+            if (balance < betValue) {
                 return res.status(400).json({ error: "Not enough gold to start." }); //
             }
 
             try {
-                let rooms = (await matchMaker.query({})).filter((_r) => 
+                let rooms = (await matchMaker.query({})).filter((_r) =>
                     _r.name === gameMode && _r.metadata.bet === betValue
                 );
 
                 const availableRoom = rooms.find(room => room.locked === false);
 
                 let roomToJoin; //
-                let goldAmount = responeBalance.data.balance;
+                let goldAmount = balance;
                 if (availableRoom) { //
                     roomToJoin = availableRoom; //
                     console.log(`Joining existing room: ${roomToJoin.roomId} with bet: ${betValue}`); //
                 } else {
-                    const roomOptions = { betValue, gameMode, playerName, goldAmount}; //
+                    const roomOptions = { betValue, gameMode, playerName, goldAmount }; //
                     roomToJoin = await matchMaker.createRoom(gameMode, roomOptions); //
                     console.log(`Created new room: ${roomToJoin.roomId} with bet: ${betValue}`); //
                 }
-                
-                return res.json({ roomId: roomToJoin.roomId }); //
 
+                return res.json({ roomId: roomToJoin.roomId }); //
             } catch (err) {
                 console.error("Matchmaking error:", err); //
                 if (err instanceof Error && err.message.includes("Max room attempts reached")) { //
@@ -99,51 +92,5 @@ export default config({
     },
 
     beforeListen: async () => { //
-
     }
 });
-
-export function connectBalanceSocket(): Promise<Socket> {
-    const externalSocketURL = `http://${SWAGGER_IP}:${BALANCE_PORT}`;
-    return new Promise((resolve, reject) => {
-        try {
-            const socket = io(externalSocketURL);
-
-            socket.on('connect', () => {
-                console.log("✅ [Global Balance Socket] Kết nối thành công!");
-                resolve(socket);
-            });
-
-            socket.on('disconnect', (reason: string) => {
-                console.warn(`⚠️ [Global Balance Socket] Đã ngắt kết nối. Lý do: ${reason}`);
-            });
-
-            socket.on('connect_error', (error: Error) => {
-                console.error(`❌ [Global Balance Socket] Lỗi kết nối:`, error.message);
-                reject(new Error(`Connect error: ${error.message}`));
-            });
-
-        } catch (err) {
-            console.error("❌ Lỗi khi cố gắng khởi tạo Global Balance Socket:", err);
-            reject(err);
-        }
-    });
-}
-
-export function sendToBalanceSocket(eventName: string, data: any): Promise<any> {
-    return new Promise((resolve, reject) => {
-      if (balanceSocket && balanceSocket.connected) {
-        balanceSocket.emit(eventName, data, (response: any) => {
-          if (response) {
-            resolve(response);
-          } else {
-            reject(new Error(`Acknowledgement failed for ${eventName}:`, response));
-          }
-        });
-      } else {
-        const errorMessage = `[External Socket] Không thể gửi dữ liệu: Socket chưa kết nối hoặc null.`;
-        console.warn(errorMessage);
-        reject(new Error(errorMessage));
-      }
-    });
-  }

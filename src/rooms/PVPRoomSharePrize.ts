@@ -3,22 +3,16 @@ import { PVPRoomState, ChoiceItem, Player, QuestionItem } from "./schema/PVPRoom
 import * as enums from "./schema/StateEnum";
 import * as interfaces from "./schema/StateInterface";
 import { io, Socket } from 'socket.io-client';
+import { IOInteract, IOReturn, Status } from "../IOInteract";
 
 const DEFAULT_MAX_QUESTIONS = 2;
 const RECONNECTION_TIMEOUT_SECONDS = 15;
-const CONFIRM_COUNTDOWN_DURATION_SECONDS = 10;
+const CONFIRM_COUNTDOWN_DURATION_SECONDS = 2;
 const CHOICE_COUNTDOWN_DURATION_SECONDS = 10;
 const DELAY_BEFORE_NEXT_QUESTION_SECONDS = 5;
 const DELAY_BEFORE_RESULT_SECONDS = 1;
 const PENALTY_OUTGAME_ANSWERTIME = 9999;
 const MAX_RATIO_PRIZE = 1;
-
-// const SWAGGER_IP = "10.10.41.224";
-const BE_URL = "localhost";
-const USERSERVER_URL = "localhost";
-const BE_PORT = 5014;
-const USERSERVER_PORT = 5012;
-const HASH_SOCKET_KEY = "";
 
 export class PVPRoomSharePrize extends Room<PVPRoomState> {
   state = new PVPRoomState();
@@ -46,8 +40,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   private poolPrize: number = 0;
   private winnerResults: interfaces.PlayerGameResult[] = [];
-  private externalDataSocket: Socket;
-  private externalBalanceSocket: Socket;
 
   // ==================== LIFECYCLE ====================
 
@@ -58,31 +50,15 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.setupMessageHandlers();
     this.setupGameMode();
 
-    this.externalDataSocket = await this.connectDataSocket();
-    this.externalBalanceSocket = await this.connectBalanceSocket();
 
-    if (this.externalDataSocket && this.externalDataSocket.connected) {
-      const MAX_RETRIES = 3;
-      let retries = 0;
-      let questions;
-
-      while (retries < MAX_RETRIES) {
-        questions = await this.sendToDataSocket("getQuestion", { hash: HASH_SOCKET_KEY });
-
-        if (questions.status === 0) {
-          this.loadAndPrepareSelectionSet(questions.data);
-          break;
-        } else {
-          console.warn(`Lỗi khi lấy câu hỏi (thử lại lần ${retries + 1}/${MAX_RETRIES}):`, questions);
-          retries++;
-        }
-      }
-
-      if (retries === MAX_RETRIES && questions.status !== 0) {
+    IOInteract.instance.getQuestion(async (returnData) => {
+      if (returnData.status === Status.Success) {
+        this.loadAndPrepareSelectionSet(returnData.data);
+      } else {
         console.error("Không thể lấy câu hỏi sau nhiều lần thử. Vui lòng kiểm tra lại kết nối hoặc dịch vụ.");
         this.isErrorState = true;
       }
-    }
+    });
 
     if (this.selectionSet) {
       const choiceListSet = this.selectionSet.map(questionItem => questionItem.choiceList);
@@ -171,109 +147,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     })
   }
 
-  connectDataSocket(): Promise<Socket> {
-    var externalSocketURL = `http://${BE_URL}:${BE_PORT}`;
-    return new Promise((resolve, reject) => {
-      try {
-        const socket = io(externalSocketURL);
-
-        socket.on('connect', () => {
-          console.log("Kết nối Data Socket thành công (từ Promise)");
-          resolve(socket);
-        });
-
-        socket.on('disconnect', (reason) => {
-          console.warn(`[External Socket] Đã ngắt kết nối với socket. Lý do: ${reason}`);
-        });
-
-        socket.on('connect_error', (error) => {
-          console.error(`[External Socket] Lỗi kết nối tới socket:`, error.message);
-          reject(new Error(`Connect error: ${error.message}`));
-        });
-
-        // Lắng nghe các sự kiện khác từ server bên ngoài
-        socket.on('questionResponse', (data) => {
-          console.log("Nhận phản hồi câu hỏi từ socket bên ngoài:", data);
-          this.broadcast("receivedQuestionData", data);
-        });
-
-      } catch (err) {
-        console.error("Lỗi khi cố gắng khởi tạo WebSocket:", err);
-        reject(err);
-      }
-    });
-  }
-
-  connectBalanceSocket(): Promise<Socket> {
-    var externalSocketURL = `http://${USERSERVER_URL}:${USERSERVER_PORT}`;
-    return new Promise((resolve, reject) => {
-      try {
-        const socket = io(externalSocketURL);
-
-        socket.on('connect', () => {
-          console.log("Kết nối Balance Socket thành công (từ Promise)");
-          resolve(socket);
-        });
-
-        socket.on('disconnect', (reason) => {
-          console.warn(`[External Socket] Đã ngắt kết nối với socket. Lý do: ${reason}`);
-        });
-
-        socket.on('connect_error', (error) => {
-          console.error(`[External Socket] Lỗi kết nối tới socket:`, error.message);
-          reject(new Error(`Connect error: ${error.message}`));
-        });
-
-        // Lắng nghe các sự kiện khác từ server bên ngoài
-        socket.on('questionResponse', (data) => {
-          console.log("Nhận phản hồi câu hỏi từ socket bên ngoài:", data);
-          this.broadcast("receivedQuestionData", data);
-        });
-
-      } catch (err) {
-        console.error("Lỗi khi cố gắng khởi tạo WebSocket:", err);
-        reject(err);
-      }
-    });
-  }
-
-  // ==================== SOCKET.IO REQUEST EVENT =============
-
-  public sendToDataSocket(eventName: string, data: any): Promise<any> {
-    return new Promise((resolve, reject) => {
-      if (this.externalDataSocket && this.externalDataSocket.connected) {
-        this.externalDataSocket.emit(eventName, data, (response: any) => {
-          if (response) {
-            resolve(response);
-          } else {
-            reject(new Error(`Acknowledgement failed for ${eventName}:`, response));
-          }
-        });
-      } else {
-        const errorMessage = `[External Socket] Không thể gửi dữ liệu: Socket chưa kết nối hoặc null.`;
-        console.warn(errorMessage);
-        reject(new Error(errorMessage));
-      }
-    });
-  }
-
-  public sendToBalanceSocket(eventName: string, data: any): Promise<any> {
-    return new Promise((resolve, reject) => {
-      if (this.externalBalanceSocket && this.externalBalanceSocket.connected) {
-        this.externalBalanceSocket.emit(eventName, data, (response: any) => {
-          if (response) {
-            resolve(response);
-          } else {
-            reject(new Error(`Acknowledgement failed for ${eventName}:`, response));
-          }
-        });
-      } else {
-        const errorMessage = `[External Socket] Không thể gửi dữ liệu: Socket chưa kết nối hoặc null.`;
-        console.warn(errorMessage);
-        reject(new Error(errorMessage));
-      }
-    });
-  }
 
   // ==================== MESSAGE HANDLERS ====================
 
@@ -334,8 +207,9 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.selectionSet[this.currentQuestionIndex].choiceList.forEach(choice => {
       if (answer === choice.photo_id) choice.vote++;
     })
-
-    const choiceStatus: interfaces.UpdateChoiceStatus[] = Array.from(this.state.players.entries()).map(([sessionId, player]) => ({
+   
+    let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
+    const choiceStatus: interfaces.UpdateChoiceStatus[] = listPlayer.map(([sessionId, player]) => ({
       id: sessionId,
       isChoiced: player.isChoiced,
       questionIndex: this.currentQuestionIndex
@@ -357,13 +231,23 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   private broadcastPlayerUpdates() {
     this.updateHost();
-    const statusUpdate: interfaces.UpdatePlayerStatus[] = Array.from(this.state.players.entries()).map(([sessionId, player]) => ({
-      id: sessionId,
-      name: player.id === this.state.hostId ? player.playerName + " (Host)" : player.playerName,
-      point: player.point,
-      isConfirmed: player.isConfirmed,
-      connectStatus: player.connectStatus
-    }));
+    let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
+    const statusUpdate: interfaces.UpdatePlayerStatus[] =  listPlayer.map(([sessionId, player ]) => ({
+        id: sessionId,
+        name: (player as Player).id === this.state.hostId ? player.playerName + " (Host)" : player.playerName,
+        point: (player as Player).point,
+        isConfirmed: (player as Player).isConfirmed,
+        connectStatus: (player as Player).connectStatus
+      }));
+
+    // Array.from(this.state.players.entries())
+    //   .map(([sessionId, player ]) => ({
+    //     id: sessionId,
+    //     name: (player as Player).id === this.state.hostId ? player.playerName + " (Host)" : player.playerName,
+    //     point: (player as Player).point,
+    //     isConfirmed: (player as Player).isConfirmed,
+    //     connectStatus: (player as Player).connectStatus
+    //   }));
     this.broadcast(enums.ServerMessage.PlayersUpdate, statusUpdate);
   }
 
@@ -383,10 +267,12 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   }
 
   private broadcastChoiceResults(): void {
-    const choiceResults: interfaces.UpdateChoiceResult[] = Array.from(this.state.players.entries()).map(([sessionId, player]) => ({
+    let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
+
+    const choiceResults: interfaces.UpdateChoiceResult[] = listPlayer.map(([sessionId, player]) => ({
       id: sessionId,
-      result: player.currentResult,
-      point: player.point,
+      result: (player as Player).currentResult,
+      point: (player as Player).point,
       questionIndex: this.currentQuestionIndex
     }));
     this.broadcast(enums.ServerMessage.UpdateChoiceResult, choiceResults);
@@ -520,10 +406,10 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   private updateHost() {
     const activePlayers = Array.from(this.state.players.values())
-      .filter(p => p.connectStatus !== enums.PlayerConnectStatus.IsOutGame)
+      .filter(p => (p as Player).connectStatus !== enums.PlayerConnectStatus.IsOutGame)
 
     if (activePlayers.length > 0) {
-      const newHost = activePlayers[0].id;
+      const newHost = (activePlayers[0] as Player).id;
       this.state.hostId = newHost;
     }
   }
@@ -663,7 +549,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   private checkRoomState(): void {
     const connectedPlayers = Array.from(this.state.players.values()).filter(
-      p => p.connectStatus === enums.PlayerConnectStatus.IsConnected
+      p => (p as Player).connectStatus === enums.PlayerConnectStatus.IsConnected
     );
 
     if (connectedPlayers.length === this.minClient) {
@@ -705,7 +591,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.state.roomPhase = enums.GamePhase.PLAYING;
 
     this.state.players.forEach(player => {
-      this.betTokenEvent(this.state.betValue, player.playerName);
+      IOInteract.instance.startBet(player.playerName, this.state.betValue, async () => { })
     })
 
     console.log("All players confirmed! Starting game... (from timeout path)");
@@ -722,7 +608,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private checkPlayerAvailableInRoom() {
     if (this.state.roomPhase === enums.GamePhase.PLAYING) {
       const activePlayers = Array.from(this.state.players.values())
-        .filter(p => p.connectStatus !== enums.PlayerConnectStatus.IsOutGame)
+        .filter(p => (p as Player).connectStatus !== enums.PlayerConnectStatus.IsOutGame)
 
       if (activePlayers.length === this.minClient) {
         this.endGame();
@@ -767,10 +653,11 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.resolveWinners();
     this.distributePrize();
     this.winnerResults.forEach(player => {
-      this.endBetTokenEvent(this.state.betValue, player.player.playerName)
+      IOInteract.instance.endBet(player.player.playerName, this.state.betValue, async () => { });
 
-      if (player.isWinner) this.addBalance(player);
-      else this.deductBalance(player)
+      if (player.isWinner)
+        IOInteract.instance.addBalance(player.sessionId, player.reward, async () => { });
+      else IOInteract.instance.deductBalance(player.sessionId, player.reward, async () => { });
     })
 
     this.endGameEvent()
@@ -781,12 +668,11 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     let leftPhotoVote = this.selectionSet[this.currentQuestionIndex].choiceList[0].vote;
     let rightPhotoVote = this.selectionSet[this.currentQuestionIndex].choiceList[1].vote;
 
-    this.sendToDataSocket("finishQuestion", {
-      hash: HASH_SOCKET_KEY,
-      questionId: this.selectionSet[this.currentQuestionIndex].questionId,
-      leftVote: leftPhotoVote,
-      rightVote: rightPhotoVote,
-    });
+    IOInteract.instance.setFinishQuestion(
+      this.selectionSet[this.currentQuestionIndex].questionId,
+      leftPhotoVote.toString(),
+      rightPhotoVote.toString(), async () => { }
+    );
   }
 
   // ==================== PRIZE & REWARD LOGIC ====================
@@ -807,7 +693,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   }
 
   private resolveWinners(): void {
-    const playersArray = Array.from(this.state.players.entries());
+    const playersArray: [string, Player][] = Array.from(this.state.players.entries());
 
     this.winnerResults = playersArray
       .map(([sessionId, player]) => ({
@@ -818,20 +704,20 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
         isWinner: false,
       }))
       .sort((a, b) => {
-        if (a.player.isSurrender && !b.player.isSurrender) {
+        if ((a as interfaces.PlayerGameResult).player.isSurrender && !(b as interfaces.PlayerGameResult).player.isSurrender) {
           return 1;
         }
-        if (!a.player.isSurrender && b.player.isSurrender) {
+        if (!(a as interfaces.PlayerGameResult).player.isSurrender && (b as interfaces.PlayerGameResult).player.isSurrender) {
           return -1;
         }
-        if (b.player.point !== a.player.point) {
-          return b.player.point - a.player.point;
+        if ((b as interfaces.PlayerGameResult).player.point !== (a as interfaces.PlayerGameResult).player.point) {
+          return (b as interfaces.PlayerGameResult).player.point - (a as interfaces.PlayerGameResult).player.point;
         }
-        return a.player.answerTime - b.player.answerTime;
+        return (a as interfaces.PlayerGameResult).player.answerTime - (b as interfaces.PlayerGameResult).player.answerTime;
       })
       .map((result, index) => {
-        result.rank = index + 1;
-        return result;
+        (result as interfaces.PlayerGameResult).rank = index + 1;
+        return result as interfaces.PlayerGameResult;
       });
 
     if (this.winnerResults.length > 0) {
@@ -904,48 +790,12 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     return null;
   }
 
-  betTokenEvent(betValue: number, mezonId: string) {
-    this.sendToBalanceSocket("betToken", {
-      user: mezonId,
-      hash: HASH_SOCKET_KEY,
-      value: betValue
-    });
-  }
-
-  endBetTokenEvent(betValue: number, mezonId: string) {
-    this.sendToBalanceSocket("endBetToken", {
-      user: mezonId,
-      hash: HASH_SOCKET_KEY,
-      value: betValue
-    });
-  }
-
-  addBalance(playerResult: interfaces.PlayerGameResult) {
-    this.sendToBalanceSocket("addBalance", {
-      user: playerResult.sessionId,
-      hash: HASH_SOCKET_KEY,
-      value: playerResult.reward
-    });
-  }
-
-  deductBalance(playerResult: interfaces.PlayerGameResult) {
-    this.sendToBalanceSocket("deductBalance", {
-      user: playerResult.sessionId,
-      hash: HASH_SOCKET_KEY,
-      value: playerResult.reward,
-    });
-  }
-
   endGameEvent() {
     const playerResult: interfaces.GameResultUpdate[] = Array.from(this.winnerResults.entries()).map(([index, player]) => ({
       userId: player.sessionId,
       amount: player.reward,
       isWin: player.isWinner
     }))
-
-    this.sendToBalanceSocket("endGame", {
-      hash: HASH_SOCKET_KEY,
-      gameData: playerResult,
-    });
+    IOInteract.instance.endGame(playerResult, async () => { });
   }
 }
