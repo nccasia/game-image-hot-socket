@@ -75,14 +75,16 @@ export class IOInteract {
         })
     }
 
-
-
     // BE socket interaction
     getQuestion(onSuccess: (response: any) => Promise<void>) {
-        console.log(">>> hash", this.hash)
-        this.BE_socket.emit('getQuestion', { hash: this.hash }, (callbackData: any) => {
-            onSuccess(callbackData)
-        })
+        return new Promise((resolve, reject) => {
+            this.BE_socket.emit('getQuestion', { hash: this.hash }, async (callbackData: any) => {
+                if (onSuccess) {
+                    await onSuccess(callbackData);
+                }
+                resolve(callbackData);
+            });
+        });
     }
     setFinishQuestion(questionId: string, leftPhotoVote: string, rightPhotoVote: string, onSuccess: (response: any) => Promise<void>) {
         this.BE_socket.emit('finishQuestion', {

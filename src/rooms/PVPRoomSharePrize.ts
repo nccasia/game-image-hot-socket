@@ -51,7 +51,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.setupGameMode();
 
 
-    IOInteract.instance.getQuestion(async (returnData) => {
+   await IOInteract.instance.getQuestion(async (returnData) => {
       if (returnData.status === Status.Success) {
         this.loadAndPrepareSelectionSet(returnData.data);
       } else {
@@ -73,7 +73,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
         });
         photoIdPairs.idList.push(currentPair);
       });
-
       this.prepareDataForPreloadBundle(photoIdPairs);
     }
 
@@ -207,7 +206,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.selectionSet[this.currentQuestionIndex].choiceList.forEach(choice => {
       if (answer === choice.photo_id) choice.vote++;
     })
-   
+
     let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
     const choiceStatus: interfaces.UpdateChoiceStatus[] = listPlayer.map(([sessionId, player]) => ({
       id: sessionId,
@@ -232,13 +231,13 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private broadcastPlayerUpdates() {
     this.updateHost();
     let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
-    const statusUpdate: interfaces.UpdatePlayerStatus[] =  listPlayer.map(([sessionId, player ]) => ({
-        id: sessionId,
-        name: (player as Player).id === this.state.hostId ? player.playerName + " (Host)" : player.playerName,
-        point: (player as Player).point,
-        isConfirmed: (player as Player).isConfirmed,
-        connectStatus: (player as Player).connectStatus
-      }));
+    const statusUpdate: interfaces.UpdatePlayerStatus[] = listPlayer.map(([sessionId, player]) => ({
+      id: sessionId,
+      name: (player as Player).id === this.state.hostId ? player.playerName + " (Host)" : player.playerName,
+      point: (player as Player).point,
+      isConfirmed: (player as Player).isConfirmed,
+      connectStatus: (player as Player).connectStatus
+    }));
 
     // Array.from(this.state.players.entries())
     //   .map(([sessionId, player ]) => ({
@@ -436,7 +435,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   }
 
   private loadAndPrepareSelectionSet(jsonData: interfaces.QuestionItemInterface[]): void {
-
     let numAvailableQuestions = jsonData.length;
 
     if (numAvailableQuestions === 0) {
@@ -474,7 +472,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
         console.error(`Error processing:`, error);
       }
     });
-    console.log(`Selection set created with ${this.selectionSet.length} topics (questions).`);
   }
 
   private convertChoiceData(choice: ChoiceItem, data: interfaces.ChoiceOption) {
