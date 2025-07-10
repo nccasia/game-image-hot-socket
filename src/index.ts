@@ -15,4 +15,5 @@ import app from "./app.config";
 import { IOInteract } from "./IOInteract";
 
 // Create and listen on 2567 (or PORT environment variable.)
+listen(app, Number(process.env.PORT));
 IOInteract.instance.connect()
