@@ -7,7 +7,7 @@ import { IOInteract, IOReturn, Status } from "../IOInteract";
 
 const DEFAULT_MAX_QUESTIONS = 2;
 const RECONNECTION_TIMEOUT_SECONDS = 15;
-const CONFIRM_COUNTDOWN_DURATION_SECONDS = 2;
+const CONFIRM_COUNTDOWN_DURATION_SECONDS = 5;
 const CHOICE_COUNTDOWN_DURATION_SECONDS = 10;
 const DELAY_BEFORE_NEXT_QUESTION_SECONDS = 5;
 const DELAY_BEFORE_RESULT_SECONDS = 1;
@@ -51,7 +51,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.setupGameMode();
 
 
-   await IOInteract.instance.getQuestion(async (returnData) => {
+    await IOInteract.instance.getQuestion(async (returnData) => {
       if (returnData.status === Status.Success) {
         this.loadAndPrepareSelectionSet(returnData.data);
       } else {
@@ -172,7 +172,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private changeConfirmPhase(client: Client) {
     console.log("Change Confirm Phase");
     const player = this.state.players.get(client.sessionId);
-    if (player && player.id !== this.state.hostId) {
+    if (player && player.userId !== this.state.hostId) {
       return;
     }
 
@@ -208,7 +208,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     })
 
     let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
-    const choiceStatus: interfaces.UpdateChoiceStatus[] = listPlayer.map(([sessionId, player]) => ({
+    const choiceStatus = listPlayer.map(([sessionId, player]) => ({
       id: sessionId,
       isChoiced: player.isChoiced,
       questionIndex: this.currentQuestionIndex
@@ -231,9 +231,9 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private broadcastPlayerUpdates() {
     this.updateHost();
     let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
-    const statusUpdate: interfaces.UpdatePlayerStatus[] = listPlayer.map(([sessionId, player]) => ({
+    const statusUpdate = listPlayer.map(([sessionId, player]) => ({
       id: sessionId,
-      name: (player as Player).id === this.state.hostId ? player.playerName + " (Host)" : player.playerName,
+      name: (player as Player).userId === this.state.hostId ? player.playerName + " (Host)" : player.playerName,
       point: (player as Player).point,
       isConfirmed: (player as Player).isConfirmed,
       connectStatus: (player as Player).connectStatus
@@ -268,7 +268,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private broadcastChoiceResults(): void {
     let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
 
-    const choiceResults: interfaces.UpdateChoiceResult[] = listPlayer.map(([sessionId, player]) => ({
+    const choiceResults = listPlayer.map(([sessionId, player]) => ({
       id: sessionId,
       result: (player as Player).currentResult,
       point: (player as Player).point,
@@ -318,7 +318,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   private createNewPlayer(client: Client, options: interfaces.RoomOptions) {
     const player = new Player();
-    player.id = client.sessionId;
+    player.userId = client.sessionId;
+    player.mezonId = options.mezonId;
     player.playerName = options.playerName;
     player.playerAvatarURL = options.playerAvatarURL;
     player.isChoiced = false;
@@ -330,8 +331,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     player.answerTime = 0;
     player.currentResult = false;
     player.lastActionTime = Date.now();
-    this.state.players.set(player.id, player);
-    console.log(`Player ${player.playerName} (${player.id}) joined.`);
+    this.state.players.set(player.userId, player);
+    console.log(`Player ${player.playerName} (${player.userId}) joined.`);
   }
 
   private markPlayerAsDisconnected(sessionId: string): void {
@@ -408,7 +409,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       .filter(p => (p as Player).connectStatus !== enums.PlayerConnectStatus.IsOutGame)
 
     if (activePlayers.length > 0) {
-      const newHost = (activePlayers[0] as Player).id;
+      const newHost = (activePlayers[0] as Player).userId;
       this.state.hostId = newHost;
     }
   }
@@ -588,7 +589,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.state.roomPhase = enums.GamePhase.PLAYING;
 
     this.state.players.forEach(player => {
-      IOInteract.instance.startBet(player.playerName, this.state.betValue, async () => { })
+      IOInteract.instance.startBet(player.mezonId, this.state.betValue, async () => { })
     })
 
     console.log("All players confirmed! Starting game... (from timeout path)");
@@ -650,11 +651,11 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.resolveWinners();
     this.distributePrize();
     this.winnerResults.forEach(player => {
-      IOInteract.instance.endBet(player.player.playerName, this.state.betValue, async () => { });
+      IOInteract.instance.endBet(player.player.mezonId, this.state.betValue, async () => { });
 
       if (player.isWinner)
-        IOInteract.instance.addBalance(player.sessionId, player.reward, async () => { });
-      else IOInteract.instance.deductBalance(player.sessionId, player.reward, async () => { });
+        IOInteract.instance.addBalance(player.mezonId, player.reward, async () => { });
+      else IOInteract.instance.deductBalance(player.mezonId, player.reward, async () => { });
     })
 
     this.endGameEvent()
@@ -683,7 +684,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
           this.poolPrize += this.state.betValue;
         }
         else {
-          console.warn(`Player ${player.id} does not have enough currency (${player.currency}) to bet ${this.state.betValue}.`);
+          console.warn(`Player ${player.userId} does not have enough currency (${player.currency}) to bet ${this.state.betValue}.`);
         }
     });
     console.log(`Calculated prize pool: ${this.poolPrize} (Base: ${this.poolPrize / this.state.bonusValue}, Bonus: ${this.state.bonusValue})`);
@@ -696,6 +697,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       .map(([sessionId, player]) => ({
         sessionId,
         player,
+        mezonId: player.mezonId,
         reward: 0,
         rank: null as number | null,
         isWinner: false,
@@ -789,7 +791,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   endGameEvent() {
     const playerResult: interfaces.GameResultUpdate[] = Array.from(this.winnerResults.entries()).map(([index, player]) => ({
-      userId: player.sessionId,
+      userId: player.mezonId,
       amount: player.reward,
       isWin: player.isWinner
     }))

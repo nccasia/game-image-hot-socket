@@ -45,16 +45,19 @@ export class IOInteract {
 
     // US socket interaction
     addBalance(user: string, value: number, onSuccess: (response: IOReturn) => Promise<void>) {
+        console.log(`addBalance: ${user}`);
         this.US_socket.emit('addBalance', { user: user, value: value, hash: this.hash, game: this.gameName }, (callbackData: any) => {
             onSuccess(callbackData)
         })
     }
     deductBalance(user: string, value: number, onSuccess: (response: IOReturn) => Promise<void>) {
+        console.log(`deductBalance: ${user}`);
         this.US_socket.emit('deductBalance', { user: user, value: value, hash: this.hash, game: this.gameName }, (callbackData: any) => {
             onSuccess(callbackData)
         })
     }
     getBalance(user: string, onSuccess: (response: IOReturn) => Promise<void>) {
+        console.log(`getBalance: ${user}`);
         this.US_socket.emit('getBalance', { user: user, hash: this.hash, game: this.gameName }, (callbackData: any) => {
             onSuccess(callbackData)
         })
@@ -65,11 +68,13 @@ export class IOInteract {
         })
     }
     startBet(user: string, value: number, onSuccess: (response: IOReturn) => Promise<void>) {
+        console.log(`startBet: ${user}`);
         this.US_socket.emit('betToken', { user: user, value: value, hash: this.hash, game: this.gameName }, (callbackData: IOReturn) => {
             onSuccess(callbackData)
         })
     }
     endBet(user: string, value: number, onSuccess: (response: IOReturn) => Promise<void>) {
+        console.log(`endbet: ${user}`);
         this.US_socket.emit('endBetToken', { user: user, value: value, hash: this.hash, game: this.gameName }, (callbackData: IOReturn) => {
             onSuccess(callbackData)
         })

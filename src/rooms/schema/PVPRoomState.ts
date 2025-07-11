@@ -1,22 +1,24 @@
-import { ArraySchema, MapSchema, Schema, type } from "@colyseus/schema";
+import { ArraySchema, Schema, type } from "@colyseus/schema";
 import { GamePhase, PlayerConnectStatus } from "./StateEnum";
 
-export class Player extends Schema {
-  @type("string") id: string;
+export class Player extends Schema{
+  @type("string") userId: string;
+  @type("string") mezonId: string;
   @type("string") playerName: string;
   @type("string") playerAvatarURL: string;
   @type("number") answerTime: number = 0;
   @type("number") point: number = 0;
   @type("number") currency: number;
   @type("number") lastActionTime: number = 0;
+  @type("boolean") isHost: boolean;
   @type("boolean") isConfirmed: boolean;
   @type("boolean") isChoiced: boolean;
   @type("boolean") isSurrender: boolean;
   @type("boolean") currentResult: boolean;
-  @type("string") connectStatus = PlayerConnectStatus.IsConnected;
+  @type("string") connectStatus: PlayerConnectStatus = PlayerConnectStatus.IsConnected;
 }
 
-export class ChoiceItem extends Schema {
+export class ChoiceItem {
   @type("string") photo_id: string = "";
   @type("string") name: string = "";
   @type("string") description: string = "";
@@ -27,13 +29,13 @@ export class ChoiceItem extends Schema {
   @type("number") disable: number = 0;
 }
 
-export class QuestionItem extends Schema {
+export class QuestionItem {
   @type("boolean") firstChoiceTrue: boolean;
   @type("string") questionId: string = "";
   @type([ChoiceItem]) choiceList = new ArraySchema<ChoiceItem>();
 }
 
-export class PVPRoomState extends Schema {
+export class PVPRoomState extends Schema{
   @type("string") gameMode: string;
   @type("number") betValue: number;
   @type("string") roomPhase = GamePhase.WAITTING;
@@ -44,5 +46,5 @@ export class PVPRoomState extends Schema {
 
   @type("number") remainingDelayTime: number = 0;
   @type("number") bonusValue: number = 1;
-  @type({ map: Player }) players = new MapSchema<Player>();
+  @type({ map: Player }) players = new Map<string, Player>();
 }

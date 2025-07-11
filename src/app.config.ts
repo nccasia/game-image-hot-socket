@@ -21,10 +21,9 @@ export default config({
         });
 
         app.post("/matchmaking", async (req, res) => { //
-            const { betValue, gameMode, playerName, userId } = req.body;
+            const { betValue, gameMode, playerName, mezonId } = req.body;
             let balance = 10000;
-
-            await IOInteract.instance.getBalance(userId, async (returnData: IOReturn) => {
+            await IOInteract.instance.getBalance(mezonId, async (returnData: IOReturn) => {
                 if (returnData.status == Status.Success) {
                     balance = returnData.data.balance;
                 }

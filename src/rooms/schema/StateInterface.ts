@@ -3,6 +3,7 @@ import { Player } from "./PVPRoomState";
 
 export interface PlayerGameResult {
   sessionId: string;
+  mezonId: string;
   player: Player;
   isWinner: boolean;
   reward: number;
@@ -13,6 +14,7 @@ export interface RoomOptions {
   betValue?: number;
   gameMode?: GamePrizeMode;
   playerName?: string;
+  mezonId?: string;
   playerAvatarURL?: string;
   initialCurrency?: number;
   maxQuestions?: number;
@@ -38,12 +40,14 @@ export interface QuestionItemInterface {
 
 export interface UpdateChoiceStatus {
     id: string,
+    connectStatus: PlayerConnectStatus,
     isChoiced: boolean,
     questionIndex: number;
 }
 
 export interface UpdateChoiceResult {
     id: string,
+    connectStatus: PlayerConnectStatus
     result: boolean,
     point: number,
     questionIndex: number,
@@ -52,6 +56,7 @@ export interface UpdateChoiceResult {
 export interface UpdatePlayerStatus {
     id: string,
     name: string,
+    isHost: boolean,
     point: number,
     isConfirmed: boolean,
     connectStatus: PlayerConnectStatus,
