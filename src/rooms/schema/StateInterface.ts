@@ -3,6 +3,7 @@ import { Player } from "./PVPRoomState";
 
 export interface PlayerGameResult {
   sessionId: string;
+  userId: string;
   mezonId: string;
   player: Player;
   isWinner: boolean;
@@ -14,9 +15,9 @@ export interface RoomOptions {
   betValue?: number;
   gameMode?: GamePrizeMode;
   playerName?: string;
+  userId?: string;
   mezonId?: string;
   playerAvatarURL?: string;
-  initialCurrency?: number;
   maxQuestions?: number;
   maxWinner?: number;
 }

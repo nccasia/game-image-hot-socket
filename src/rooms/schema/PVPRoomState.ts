@@ -2,6 +2,7 @@ import { ArraySchema, Schema, type } from "@colyseus/schema";
 import { GamePhase, PlayerConnectStatus } from "./StateEnum";
 
 export class Player extends Schema{
+  @type("string") sessionId: string;
   @type("string") userId: string;
   @type("string") mezonId: string;
   @type("string") playerName: string;
@@ -10,7 +11,7 @@ export class Player extends Schema{
   @type("number") point: number = 0;
   @type("number") currency: number;
   @type("number") lastActionTime: number = 0;
-  @type("boolean") isHost: boolean;
+  @type("boolean") isHost: boolean = false;
   @type("boolean") isConfirmed: boolean;
   @type("boolean") isChoiced: boolean;
   @type("boolean") isSurrender: boolean;
@@ -43,7 +44,6 @@ export class PVPRoomState extends Schema{
   @type("number") remainingConfirmTime: number;
   @type("number") remainingChoiceTime: number;
   @type("number") questionBroadcastTime: number = 0;
-
   @type("number") remainingDelayTime: number = 0;
   @type("number") bonusValue: number = 1;
   @type({ map: Player }) players = new Map<string, Player>();

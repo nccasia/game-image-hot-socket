@@ -22,26 +22,39 @@ export default config({
 
         app.post("/matchmaking", async (req, res) => { //
             const { betValue, gameMode, playerName, mezonId } = req.body;
-            let balance = 10000;
-            await IOInteract.instance.getBalance(mezonId, async (returnData: IOReturn) => {
-                if (returnData.status == Status.Success) {
-                    balance = returnData.data.balance;
-                }
-                else {
-
-                }
+            let balance : number;
+            const getBalancePromise = new Promise<IOReturn>((resolve, reject) => {
+                IOInteract.instance.getBalance(mezonId, async (returnData: IOReturn) => {
+                    if (returnData.status == Status.Success) {
+                        resolve(returnData);
+                    } else {
+                        reject(new Error("Failed to retrieve balance: " + returnData.status));
+                    }
+                });
             });
+
+            try {
+                const returnData: IOReturn = await getBalancePromise;
+                balance = returnData.data.balance;
+            } catch (error) {
+                console.error("Error fetching balance:", error);
+                return res.status(500).json({ error: "An error occurred while fetching balance." });
+            }
+
             if (betValue === undefined || betValue === null) { //
                 return res.status(400).json({ error: "betValue is required for matchmaking." }); //
             }
+
             if (typeof betValue !== 'number' || betValue < 0) { //
                 return res.status(400).json({ error: "betValue must be a non-negative number." }); //
             }
+
             const validGameModes = [PVP_RANK_PRIZE, PVP_SHARE_PRIZE]; // Thêm STREAK_ROOM_NAME nếu bạn muốn hỗ trợ
             if (!validGameModes.includes(gameMode)) {
                 return res.status(400).json({ error: `Invalid gameMode: ${gameMode}. Available modes are: ${validGameModes.join(', ')}` });
             }
-            if (balance < betValue) {
+            
+            if (balance < betValue && balance != null && balance != null) {
                 return res.status(400).json({ error: "Not enough gold to start." }); //
             }
 
