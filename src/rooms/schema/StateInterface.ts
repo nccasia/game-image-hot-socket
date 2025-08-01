@@ -1,8 +1,7 @@
-import { GamePrizeMode, PlayerConnectStatus } from "./StateEnum";
+import { PlayerConnectStatus } from "./StateEnum";
 import { Player } from "./PVPRoomState";
 
 export interface PlayerGameResult {
-  sessionId: string;
   userId: string;
   mezonId: string;
   player: Player;
@@ -12,14 +11,16 @@ export interface PlayerGameResult {
 }
 
 export interface RoomOptions {
-  betValue?: number;
-  gameMode?: GamePrizeMode;
-  playerName?: string;
-  userId?: string;
-  mezonId?: string;
-  playerAvatarURL?: string;
-  maxQuestions?: number;
-  maxWinner?: number;
+  type: number;
+  payload: OptionData;
+}
+
+export interface OptionData {
+  playerName: string,
+  mezonId: string,
+  userId: string,
+  betValue: number,
+  roomId: string
 }
 
 export interface ChoiceOption {
@@ -64,7 +65,7 @@ export interface UpdatePlayerStatus {
 }
 
 export interface UpdatePlayerResult {
-    sessionId: string,
+    userId: string,
     nickname: string,
     point: number,
     reward: number,
@@ -73,6 +74,7 @@ export interface UpdatePlayerResult {
 
 export interface UpdateGameResult {
     sessionId: string,
+    userId: string,
     nickname: string,
     point: number,
     reward: number,

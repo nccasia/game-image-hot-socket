@@ -15,7 +15,7 @@ export class Player extends Schema{
   @type("boolean") isConfirmed: boolean;
   @type("boolean") isChoiced: boolean;
   @type("boolean") isSurrender: boolean;
-  @type("boolean") currentResult: boolean;
+  @type("boolean") currentResult: string;
   @type("string") connectStatus: PlayerConnectStatus = PlayerConnectStatus.IsConnected;
 }
 

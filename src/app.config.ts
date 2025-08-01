@@ -2,17 +2,21 @@ import config from "@colyseus/tools";
 import { monitor } from "@colyseus/monitor";
 import { playground } from "@colyseus/playground";
 import { matchMaker } from "colyseus";
-// import { PVPRoomRankPrize } from "./rooms/PVPRoomRankPrize";
 import { PVPRoomSharePrize } from "./rooms/PVPRoomSharePrize";
 import { IOInteract, IOReturn, Status } from "./IOInteract";
+import { RequestType } from "./Enums";
+import { GamePrizeMode } from "./rooms/schema/StateEnum";
+import { LobbyRoom } from "./rooms/LobbyRoom";
 
-const PVP_RANK_PRIZE = 'pvp_rank_prize';
+// const PVP_RANK_PRIZE = 'pvp_rank_prize';
 const PVP_SHARE_PRIZE = 'pvp_share_prize';
+const LOBBY_ROOM = 'lobby_room';
 
 export default config({
     initializeGameServer: (gameServer) => { //
-        // gameServer.define(PVP_RANK_PRIZE, PVPRoomRankPrize); //
         gameServer.define(PVP_SHARE_PRIZE, PVPRoomSharePrize); //
+        gameServer.define(LOBBY_ROOM, LobbyRoom); //
+        matchMaker.createRoom(LOBBY_ROOM, {});
     },
 
     initializeExpress: (app) => { //
@@ -20,70 +24,90 @@ export default config({
             res.send("It's time to kick ass and chew bubblegum!"); //
         });
 
-        app.post("/matchmaking", async (req, res) => { //
-            const { betValue, gameMode, playerName, mezonId } = req.body;
-            let balance : number;
-            const getBalancePromise = new Promise<IOReturn>((resolve, reject) => {
-                IOInteract.instance.getBalance(mezonId, async (returnData: IOReturn) => {
-                    if (returnData.status == Status.Success) {
-                        resolve(returnData);
-                    } else {
-                        reject(new Error("Failed to retrieve balance: " + returnData.status));
-                    }
-                });
-            });
+        app.post("/matchmaking", async (req, res) => {
+            const { type, payload } = req.body;
 
             try {
-                const returnData: IOReturn = await getBalancePromise;
-                balance = returnData.data.balance;
-            } catch (error) {
-                console.error("Error fetching balance:", error);
-                return res.status(500).json({ error: "An error occurred while fetching balance." });
-            }
+                // if (type === RequestType.FIND_ROOM || type === RequestType.CREATE_ROOM || type === RequestType.JOIN_ROOM_BY_ID) {
+                //     await checkBalance(payload);
+                // }
 
-            if (betValue === undefined || betValue === null) { //
-                return res.status(400).json({ error: "betValue is required for matchmaking." }); //
-            }
+                switch (type) {
+                    case RequestType.FIND_ROOM:
+                        try {
+                            let rooms = (await matchMaker.query({})).filter((_r) =>
+                                _r.name === PVP_SHARE_PRIZE && _r.metadata.betValue === payload.betValue
+                            );
 
-            if (typeof betValue !== 'number' || betValue < 0) { //
-                return res.status(400).json({ error: "betValue must be a non-negative number." }); //
-            }
+                            const availableRoom = rooms.find(room => room.locked === false);
 
-            const validGameModes = [PVP_RANK_PRIZE, PVP_SHARE_PRIZE]; // Thêm STREAK_ROOM_NAME nếu bạn muốn hỗ trợ
-            if (!validGameModes.includes(gameMode)) {
-                return res.status(400).json({ error: `Invalid gameMode: ${gameMode}. Available modes are: ${validGameModes.join(', ')}` });
-            }
-            
-            if (balance < betValue && balance != null && balance != null) {
-                return res.status(400).json({ error: "Not enough gold to start." }); //
-            }
+                            let roomToJoin;
+                            if (availableRoom) {
+                                roomToJoin = availableRoom;
+                                console.log(`Joining existing room: ${roomToJoin.roomId} with bet: ${payload.betValue}`);
+                            }
+                            else {
+                                const roomOptions = payload; //
+                                roomToJoin = await matchMaker.createRoom(GamePrizeMode.SHAREPRIZE, roomOptions); //
 
-            try {
-                let rooms = (await matchMaker.query({})).filter((_r) =>
-                    _r.name === gameMode && _r.metadata.bet === betValue
-                );
+                            }
 
-                const availableRoom = rooms.find(room => room.locked === false);
+                            return res.json({ success: true, roomId: roomToJoin.roomId });
 
-                let roomToJoin; //
-                let goldAmount = balance;
-                if (availableRoom) { //
-                    roomToJoin = availableRoom; //
-                    console.log(`Joining existing room: ${roomToJoin.roomId} with bet: ${betValue}`); //
-                } else {
-                    const roomOptions = { betValue, gameMode, playerName, goldAmount }; //
-                    roomToJoin = await matchMaker.createRoom(gameMode, roomOptions); //
-                    console.log(`Created new room: ${roomToJoin.roomId} with bet: ${betValue}`); //
+                        } catch (err: any) {
+                            console.error("Matchmaking error (FIND_ROOM):", err);
+                            if (err.message && err.message.includes("Max room attempts reached")) {
+                                return res.status(503).json({ success: false, error: "Server busy, please try again." });
+                            }
+                            return res.status(500).json({ success: false, error: "Matchmaking failed unexpectedly." });
+                        }
+
+                    case RequestType.CREATE_ROOM:
+                        try {
+                            const roomOptions = payload;
+                            let roomToJoin = await matchMaker.createRoom(GamePrizeMode.SHAREPRIZE, roomOptions);
+                            return res.json({ success: true, roomId: roomToJoin.roomId });
+                        } catch (err: any) {
+                            console.error("Matchmaking error (CREATE_ROOM):", err);
+                            if (err.message && err.message.includes("Max room attempts reached")) {
+                                return res.status(503).json({ success: false, error: "Server busy, please try again." });
+                            }
+                            return res.status(500).json({ success: false, error: "Failed to create room unexpectedly." });
+                        }
+
+                    case RequestType.GET_LIST_ROOM:
+                        try {
+                            let rooms = (await matchMaker.query({})).filter((_r) => _r.locked === false && _r.name === PVP_SHARE_PRIZE);
+                            return res.json({ success: true, rooms: rooms });
+                        } catch (err: any) {
+                            console.error("Matchmaking error (GET_LIST_ROOM):", err);
+                            return res.status(500).json({ success: false, error: "Failed to retrieve room list unexpectedly." });
+                        }
+
+                    case RequestType.JOIN_ROOM_BY_ID:
+                        try {
+                            let roomToJoin = (await matchMaker.query({})).find((_r) =>
+                                _r.roomId === payload.roomId
+                            );
+
+                            if (!roomToJoin) {
+                                return res.status(404).json({ success: false, error: `Room with ID ${payload.roomId} not found.` });
+                            }
+
+                            return res.json({ success: true, roomId: roomToJoin.roomId });
+
+                        } catch (err: any) {
+                            console.error("Matchmaking error (JOIN_ROOM):", err);
+                            return res.status(500).json({ success: false, error: "Failed to join room by ID unexpectedly." });
+                        }
+
+                    default:
+                        return res.status(400).json({ success: false, error: "Unknown matchmaking event type." });
                 }
-
-                return res.json({ roomId: roomToJoin.roomId }); //
-            } catch (err) {
-                console.error("Matchmaking error:", err); //
-                if (err instanceof Error && err.message.includes("Max room attempts reached")) { //
-                    res.status(503).json({ error: "Server busy, please try again." }); //
-                } else {
-                    res.status(500).json({ error: "Matchmaking failed unexpectedly." }); //
-                }
+            } catch (error: any) {
+                console.error("Matchmaking request failed:", error.message);
+                const statusCode = error.message.includes("betValue") || error.message.includes("Not enough gem") ? 400 : 500;
+                return res.status(statusCode).json({ success: false, error: error.message });
             }
         });
 
@@ -103,6 +127,45 @@ export default config({
         app.use("/monitor", monitor()); //
     },
 
-    beforeListen: async () => { //
+    beforeListen: async () => { 
     }
 });
+
+export async function checkBalance(payload: { mezonId: string; betValue: number }): Promise<void> {
+    // let balance: number;
+
+    // const getBalancePromise = new Promise<IOReturn>((resolve, reject) => {
+    //     IOInteract.instance.getBalance(payload.mezonId, async (response: IOReturn) => {
+    //         if (response.status === Status.Success) {
+    //             resolve(response);
+    //         } else {
+    //             reject(new Error("Failed to retrieve balance: " + response.status));
+    //         }
+    //     });
+    // });
+
+    // try {
+    //     const returnData: IOReturn = await getBalancePromise;
+    //     if (typeof returnData.data?.balance === 'number') {
+    //         balance = returnData.data.balance;
+    //     } else {
+    //         throw new Error("Balance data is missing or invalid from API.");
+    //     }
+    // } catch (error: any) {
+    //     console.error("Error fetching balance:", error.message);
+    //     throw new Error("An error occurred while fetching balance.");
+    // }
+
+    // if (payload.betValue === undefined || payload.betValue === null) {
+    //     throw new Error("betValue is required for matchmaking.");
+    // }
+
+    // if (typeof payload.betValue !== 'number' || payload.betValue < 0) {
+    //     throw new Error("betValue must be a non-negative number.");
+    // }
+
+    // if (balance < payload.betValue) {
+    //     throw new Error("Not enough gem to start. Top up gems or choose a lower bet.");
+    // }
+}
+

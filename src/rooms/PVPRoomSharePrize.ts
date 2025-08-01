@@ -2,9 +2,10 @@ import { Room, Client } from "@colyseus/core";
 import { PVPRoomState, ChoiceItem, Player, QuestionItem } from "./schema/PVPRoomState";
 import * as enums from "./schema/StateEnum";
 import * as interfaces from "./schema/StateInterface";
-import { IOInteract, IOReturn, Status } from "../IOInteract";
+import { IOInteract, Status } from "../IOInteract";
+import { json } from "express";
 
-const DEFAULT_MAX_QUESTIONS = 2;
+const DEFAULT_MAX_QUESTIONS = 5;
 const RECONNECTION_TIMEOUT_SECONDS = 15;
 const CONFIRM_COUNTDOWN_DURATION_SECONDS = 5;
 const CHOICE_COUNTDOWN_DURATION_SECONDS = 10;
@@ -15,7 +16,7 @@ const MAX_RATIO_PRIZE = 1;
 
 export class PVPRoomSharePrize extends Room<PVPRoomState> {
   state = new PVPRoomState();
-  maxClients = Infinity;
+  maxClients = 99;
   minClient = 1;
   maxWinner = 1;
   private isErrorState: boolean = false;
@@ -42,8 +43,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   // ==================== LIFECYCLE ====================
 
-  async onCreate(options: interfaces.RoomOptions) {
-    this.maxQuestions = options.maxQuestions || DEFAULT_MAX_QUESTIONS;
+  async onCreate(options: interfaces.OptionData) {
+    this.maxQuestions = DEFAULT_MAX_QUESTIONS;
     this.setupRoomMetadata(options);
     // this.randomizeBonusValue();
     this.setupMessageHandlers();
@@ -88,7 +89,9 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       this.broadcastBundleListForPrepare(client);
     }
 
-    this.handlePlayerJoin(client, options);
+    let optionData = options.payload;
+
+    this.handlePlayerJoin(client, optionData);
   }
 
   async onLeave(client: Client, consented: boolean) {
@@ -154,7 +157,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   // ==================== PLAYER ACTIONS HANDLERS ====================
 
-  private handlePlayerJoin(client: Client, options: interfaces.RoomOptions) {
+  private handlePlayerJoin(client: Client, options: interfaces.OptionData) {
     const existingPlayer = this.state.players.get(client.sessionId);
     if (existingPlayer) {
       this.reconnectPlayer(client.sessionId);
@@ -194,8 +197,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     const answerTime = (Date.now() - (this.state.questionBroadcastTime || Date.now())) / 1000;
     player.answerTime += answerTime;
 
-    player.currentResult = (answer === this.currentBestChoice);
-    if (player.currentResult) {
+    player.currentResult = answer;
+    if (answer === this.currentBestChoice) {
       player.point++;
     }
 
@@ -211,12 +214,12 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       questionIndex: this.currentQuestionIndex
     }));
 
-    this.broadcast(enums.ServerMessage.UpdateChoiceStatus, choiceStatus);
+    // this.broadcast(enums.ServerMessage.UpdateChoiceStatus, choiceStatus);
     this.checkAllPlayersChoiced();
   }
 
   private sendChoiceListToClient(client: Client) {
-    this.clients.getById(client.sessionId)?.send(enums.ServerMessage.ChoiceList, this.currentChoiceList);
+    this.clients.getById(client.sessionId)?.send(enums.ServerMessage.Question, this.currentChoiceList);
   }
 
   // ==================== BROADCASTING ====================
@@ -227,24 +230,24 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   private broadcastPlayerUpdates() {
     this.updateHost();
-    let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
-    const statusUpdate = listPlayer.map(([sessionId, player]) => ({
-      id: sessionId,
-      name: (player as Player).playerName,
-      isHost: (player as Player).isHost,
-      point: (player as Player).point,
-      isConfirmed: (player as Player).isConfirmed,
-      connectStatus: (player as Player).connectStatus
-    }));
+    let statusUpdate
 
-    // Array.from(this.state.players.entries())
-    //   .map(([sessionId, player ]) => ({
-    //     id: sessionId,
-    //     name: (player as Player).id === this.state.hostId ? player.playerName + " (Host)" : player.playerName,
-    //     point: (player as Player).point,
-    //     isConfirmed: (player as Player).isConfirmed,
-    //     connectStatus: (player as Player).connectStatus
-    //   }));
+    if (this.state.roomPhase === enums.GamePhase.WAITTING) {
+      let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
+
+      statusUpdate = listPlayer.map(([sessionId, player]) => ({
+        id: sessionId,
+        name: (player as Player).playerName,
+        isHost: (player as Player).isHost,
+        point: (player as Player).point,
+        isConfirmed: (player as Player).isConfirmed,
+        connectStatus: (player as Player).connectStatus
+      }));
+    }
+    else {
+      statusUpdate = this.updateTopPlayers()
+    }
+
     this.broadcast(enums.ServerMessage.PlayersUpdate, statusUpdate);
   }
 
@@ -258,6 +261,15 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       this.state.questionBroadcastTime = Date.now();
       this.broadcast(enums.ServerMessage.Question, this.currentChoiceList);
       this.setupChoiceCountDown(CHOICE_COUNTDOWN_DURATION_SECONDS);
+
+      const updateTopList = this.updateTopPlayers()
+      this.broadcast(enums.ServerMessage.UpdateTop, updateTopList);
+
+      const gameProgres = {
+        questionIndex: this.currentQuestionIndex,
+        maxQuestion: this.maxQuestions,
+      }
+      this.broadcast(enums.ServerMessage.UpdateGameProgress, gameProgres);
     } else {
       this.endGame();
     }
@@ -268,17 +280,19 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
     const choiceResults = listPlayer.map(([sessionId, player]) => ({
       id: sessionId,
-      result: (player as Player).currentResult,
+      result: this.currentBestChoice,
       point: (player as Player).point,
       connectStatus: (player as Player).connectStatus,
-      questionIndex: this.currentQuestionIndex
+      questionIndex: this.currentQuestionIndex,
+      maxQuestion: this.maxQuestions
     }));
     this.broadcast(enums.ServerMessage.UpdateChoiceResult, choiceResults);
   }
 
   private broadcastGameResults(result: interfaces.PlayerGameResult[]) {
-    const formattedResult: interfaces.UpdateGameResult[] = result.map(({ sessionId, player, reward, rank, isWinner }) => ({
-      sessionId,
+    const formattedResult: interfaces.UpdateGameResult[] = result.map(({ player, reward, rank, isWinner }) => ({
+      sessionId: player.sessionId,
+      userId: player.userId,
       nickname: player.playerName,
       point: player.point,
       reward,
@@ -300,9 +314,9 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   // ==================== ROOM & GAME LOGIC SETUP ====================
 
-  private setupRoomMetadata(options: interfaces.RoomOptions): void {
+  private setupRoomMetadata(options: interfaces.OptionData): void {
     if (options.betValue !== undefined) {
-      this.setMetadata({ bet: options.betValue });
+      this.setMetadata({ betValue: options.betValue });
       this.state.betValue = options.betValue;
     } else {
       console.warn("Bet value not provided in room options. Defaulting to 0.");
@@ -315,20 +329,20 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.state.gameMode = enums.GamePrizeMode.SHAREPRIZE
   }
 
-  private createNewPlayer(client: Client, options: interfaces.RoomOptions) {
+  private createNewPlayer(client: Client, options: interfaces.OptionData) {
     const player = new Player();
     player.sessionId = client.sessionId;
     player.userId = options.userId;
     player.mezonId = options.mezonId;
     player.playerName = options.playerName;
-    player.playerAvatarURL = options.playerAvatarURL;
+    // player.playerAvatarURL = options.playerAvatarURL;
     player.isChoiced = false;
     player.isConfirmed = false;
     player.isSurrender = false;
     player.connectStatus = enums.PlayerConnectStatus.IsConnected
     player.point = 0;
     player.answerTime = 0;
-    player.currentResult = false;
+    player.currentResult = "";
     player.lastActionTime = Date.now();
     this.state.players.set(player.sessionId, player);
   }
@@ -353,6 +367,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       if (this.state.roomPhase === enums.GamePhase.PLAYING) {
         const client = this.clients.getById(sessionId);
         if (client) {
+          client.send(enums.ServerMessage.PreloadBundle, this.listPrepareBundle);
+
           client.send(enums.ServerMessage.Question, this.currentChoiceList);
           console.log(`Sent current question and choice list to reconnected player ${sessionId}.`);
         }
@@ -361,8 +377,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
         const client = this.clients.getById(sessionId);
 
         if (client) {
-          const formattedResult: interfaces.UpdatePlayerResult[] = this.winnerResults.map(({ sessionId, player, reward, rank }) => ({
-            sessionId,
+          const formattedResult: interfaces.UpdatePlayerResult[] = this.winnerResults.map(({ player, reward, rank }) => ({
             userId: player.userId,
             mezonId: player.mezonId,
             nickname: player.playerName,
@@ -587,19 +602,20 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
     this.stopConfirmCountdown();
     this.state.roomPhase = enums.GamePhase.PLAYING;
-
+    let gameData: any[] = []
     this.state.players.forEach(player => {
-      IOInteract.instance.startBet(player.mezonId, this.state.betValue, async () => { })
+      gameData.push({ userId: player.userId, amount: this.state.betValue })
     })
+    IOInteract.instance.startBet(this.roomId, gameData, async () => { })
 
-    console.log("All players confirmed! Starting game... (from timeout path)");
+    console.log("All players confirmed! Starting game... (from timeout path)", this.roomId, " ", JSON.stringify(gameData));
     this.broadcastQuestion();
   }
 
   private checkAllPlayersChoiced(): void {
     this.state.players.forEach(player => {
       if (player.isChoiced === false)
-        player.currentResult = false;
+        player.currentResult = "";
     })
   }
 
@@ -627,7 +643,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private resetPlayerChoiceStatus(): void {
     this.state.players.forEach(player => {
       player.isChoiced = false;
-      player.currentResult = false;
+      player.currentResult = "";
     });
   }
 
@@ -652,18 +668,11 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.distributePrize();
 
     this.winnerResults.forEach(player => {
-      IOInteract.instance.endBet(player.player.mezonId, this.state.betValue, async () => { 
-
-        if (player.isWinner) {
-          IOInteract.instance.addBalance(player.mezonId, player.reward, async () => { });
-        }
-        else {
-          IOInteract.instance.deductBalance(player.mezonId, player.reward, async () => { });
-        }
-      });
+      if (player.isWinner) {
+        IOInteract.instance.endBet(this.roomId, player.player.userId, async () => { })
+      }
     })
 
-    this.endGameEvent()
     this.broadcastGameResults(this.winnerResults);
   }
 
@@ -676,6 +685,32 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       leftPhotoVote.toString(),
       rightPhotoVote.toString(), async () => { }
     );
+  }
+
+  private updateTopPlayers(): any[] {
+    let listPlayer: [string, Player][] = Array.from(this.state.players.entries())
+
+    let topPlayers = listPlayer.map(([sessionId, player]) => ({
+      sessionId: sessionId,
+      name: (player as Player).playerName,
+      isHost: (player as Player).isHost,
+      point: (player as Player).point,
+      answerTime: (player as Player).answerTime,
+      isConfirmed: (player as Player).isConfirmed,
+      connectStatus: (player as Player).connectStatus,
+      rank: null as number | null,
+    }))
+      .sort((a, b) => {
+        if (b.point !== a.point) {
+          return b.point - a.point;
+        }
+      })
+      .map((result, index) => {
+        result.rank = index + 1;
+        return result;
+      });
+
+    return topPlayers;
   }
 
   // ==================== PRIZE & REWARD LOGIC ====================
@@ -713,7 +748,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
         if ((b as interfaces.PlayerGameResult).player.point !== (a as interfaces.PlayerGameResult).player.point) {
           return (b as interfaces.PlayerGameResult).player.point - (a as interfaces.PlayerGameResult).player.point;
         }
-        return (a as interfaces.PlayerGameResult).player.answerTime - (b as interfaces.PlayerGameResult).player.answerTime;
       })
       .map((result, index) => {
         (result as interfaces.PlayerGameResult).rank = index + 1;
@@ -745,7 +779,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     const winner = this.winnerResults.length > 0 ? this.winnerResults[0] : null;
     if (winner) {
       winner.reward = prizePool - betValue;
-      console.log(`SHAREPRIZE: Player ${winner.player.playerName} (${winner.sessionId}) (Rank ${winner.rank}) wins ${(winner.reward).toFixed(2)} (all prize pool).`);
+      console.log(`SHAREPRIZE: Player ${winner.player.playerName} (${winner.userId}) (Rank ${winner.rank}) wins ${(winner.reward).toFixed(2)} (all prize pool).`);
 
       this.winnerResults.forEach(player => {
         if (player !== winner) {
@@ -788,15 +822,5 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       }
     }
     return null;
-  }
-
-  endGameEvent() {
-    const playerResult: interfaces.GameResultUpdate[] = Array.from(this.winnerResults.entries()).map(([index, player]) => ({
-      userId: player.userId,
-      amount: player.reward,
-      isWin: player.isWinner
-    }))
-
-    IOInteract.instance.endGame(playerResult, async () => { });
   }
 }
