@@ -22,7 +22,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private isErrorState: boolean = false;
 
   private maxQuestions: number = DEFAULT_MAX_QUESTIONS;
-  private currentQuestionIndex: number = 0;
   private selectionSet: QuestionItem[] = [];
   private currentChoiceList: string[] = [];
   private currentBestChoice: string = "";
@@ -49,6 +48,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     // this.randomizeBonusValue();
     this.setupMessageHandlers();
     this.setupGameMode();
+    this.setupRoomState();
 
     await IOInteract.instance.getQuestion(async (returnData) => {
       if (returnData.status === Status.Success) {
@@ -202,7 +202,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       player.point++;
     }
 
-    this.selectionSet[this.currentQuestionIndex].choiceList.forEach(choice => {
+    this.selectionSet[this.state.currentQuestionIndex].choiceList.forEach(choice => {
       if (answer === choice.photo_id) choice.vote++;
     })
 
@@ -211,7 +211,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       id: sessionId,
       isChoiced: (player as Player).isChoiced,
       connectStatus: (player as Player).connectStatus,
-      questionIndex: this.currentQuestionIndex
+      questionIndex: this.state.currentQuestionIndex
     }));
 
     // this.broadcast(enums.ServerMessage.UpdateChoiceStatus, choiceStatus);
@@ -252,8 +252,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   }
 
   private broadcastQuestion(): void {
-    if (this.currentQuestionIndex < this.maxQuestions) {
-      const currentTopic = this.selectionSet[this.currentQuestionIndex];
+    if (this.state.currentQuestionIndex < this.maxQuestions) {
+      const currentTopic = this.selectionSet[this.state.currentQuestionIndex];
       this.currentChoiceList = currentTopic.choiceList.map(k => k.photo_id);
 
       this.currentBestChoice = currentTopic.firstChoiceTrue ? this.currentChoiceList[0] : this.currentBestChoice = this.currentChoiceList[1];
@@ -264,12 +264,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
       const updateTopList = this.updateTopPlayers()
       this.broadcast(enums.ServerMessage.UpdateTop, updateTopList);
-
-      const gameProgres = {
-        questionIndex: this.currentQuestionIndex,
-        maxQuestion: this.maxQuestions,
-      }
-      this.broadcast(enums.ServerMessage.UpdateGameProgress, gameProgres);
     } else {
       this.endGame();
     }
@@ -283,7 +277,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       result: this.currentBestChoice,
       point: (player as Player).point,
       connectStatus: (player as Player).connectStatus,
-      questionIndex: this.currentQuestionIndex,
+      questionIndex: this.state.currentQuestionIndex,
       maxQuestion: this.maxQuestions
     }));
     this.broadcast(enums.ServerMessage.UpdateChoiceResult, choiceResults);
@@ -313,6 +307,11 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   }
 
   // ==================== ROOM & GAME LOGIC SETUP ====================
+
+  setupRoomState(){
+      this.state.maxQuestions = DEFAULT_MAX_QUESTIONS;
+      this.state.currentQuestionIndex = 0;
+  }
 
   private setupRoomMetadata(options: interfaces.OptionData): void {
     if (options.betValue !== undefined) {
@@ -538,7 +537,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
       if (Math.floor(this.state.remainingDelayTime) <= 0) {
         this.stopDelayBeforeNextQuestion();
-        this.currentQuestionIndex++;
+        this.state.currentQuestionIndex++;
         this.resetPlayerChoiceStatus();
         this.broadcastQuestion();
       }
@@ -677,11 +676,11 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   }
 
   sendResultFinishQuestion() {
-    let leftPhotoVote = this.selectionSet[this.currentQuestionIndex].choiceList[0].vote;
-    let rightPhotoVote = this.selectionSet[this.currentQuestionIndex].choiceList[1].vote;
+    let leftPhotoVote = this.selectionSet[this.state.currentQuestionIndex].choiceList[0].vote;
+    let rightPhotoVote = this.selectionSet[this.state.currentQuestionIndex].choiceList[1].vote;
 
     IOInteract.instance.setFinishQuestion(
-      this.selectionSet[this.currentQuestionIndex].questionId,
+      this.selectionSet[this.state.currentQuestionIndex].questionId,
       leftPhotoVote.toString(),
       rightPhotoVote.toString(), async () => { }
     );
