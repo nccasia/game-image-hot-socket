@@ -262,8 +262,10 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       this.broadcast(enums.ServerMessage.Question, this.currentChoiceList);
       this.setupChoiceCountDown(CHOICE_COUNTDOWN_DURATION_SECONDS);
 
-      const updateTopList = this.updateTopPlayers()
-      this.broadcast(enums.ServerMessage.UpdateTop, updateTopList);
+      if (this.state.currentQuestionIndex === 0) {
+        const updateTopList = this.updateTopPlayers()
+        this.broadcast(enums.ServerMessage.UpdateTop, updateTopList);
+      }
     } else {
       this.endGame();
     }
@@ -280,6 +282,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       questionIndex: this.state.currentQuestionIndex,
       maxQuestion: this.maxQuestions
     }));
+    const updateTopList = this.updateTopPlayers()
+    this.broadcast(enums.ServerMessage.UpdateTop, updateTopList);
     this.broadcast(enums.ServerMessage.UpdateChoiceResult, choiceResults);
   }
 
@@ -308,9 +312,9 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   // ==================== ROOM & GAME LOGIC SETUP ====================
 
-  setupRoomState(){
-      this.state.maxQuestions = DEFAULT_MAX_QUESTIONS;
-      this.state.currentQuestionIndex = 0;
+  setupRoomState() {
+    this.state.maxQuestions = DEFAULT_MAX_QUESTIONS;
+    this.state.currentQuestionIndex = 0;
   }
 
   private setupRoomMetadata(options: interfaces.OptionData): void {
