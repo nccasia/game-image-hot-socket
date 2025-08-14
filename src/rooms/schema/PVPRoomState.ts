@@ -15,7 +15,7 @@ export class Player extends Schema{
   @type("boolean") isConfirmed: boolean;
   @type("boolean") isChoiced: boolean;
   @type("boolean") isSurrender: boolean;
-  @type("boolean") currentResult: boolean;
+  @type("boolean") currentResult: string;
   @type("string") connectStatus: PlayerConnectStatus = PlayerConnectStatus.IsConnected;
 }
 
@@ -46,5 +46,7 @@ export class PVPRoomState extends Schema{
   @type("number") questionBroadcastTime: number = 0;
   @type("number") remainingDelayTime: number = 0;
   @type("number") bonusValue: number = 1;
+  @type("number") maxQuestions: number;
+  @type("number") currentQuestionIndex: number = 0;
   @type({ map: Player }) players = new Map<string, Player>();
 }

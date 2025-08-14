@@ -2,17 +2,19 @@ import config from "@colyseus/tools";
 import { monitor } from "@colyseus/monitor";
 import { playground } from "@colyseus/playground";
 import { matchMaker } from "colyseus";
-// import { PVPRoomRankPrize } from "./rooms/PVPRoomRankPrize";
 import { PVPRoomSharePrize } from "./rooms/PVPRoomSharePrize";
-import { IOInteract, IOReturn, Status } from "./IOInteract";
+import { RequestType } from "./Enums";
+import { LobbyRoom } from "./rooms/LobbyRoom";
 
-const PVP_RANK_PRIZE = 'pvp_rank_prize';
-const PVP_SHARE_PRIZE = 'pvp_share_prize';
+// const PVP_RANK_PRIZE = 'pvp_rank_prize';
+const PVP_SHARE_PRIZE = "pvp_share_prize";
+const LOBBY_ROOM = "lobby_room";
 
 export default config({
     initializeGameServer: (gameServer) => { //
-        // gameServer.define(PVP_RANK_PRIZE, PVPRoomRankPrize); //
         gameServer.define(PVP_SHARE_PRIZE, PVPRoomSharePrize); //
+        gameServer.define(LOBBY_ROOM, LobbyRoom); //
+        matchMaker.createRoom(LOBBY_ROOM, {});
     },
 
     initializeExpress: (app) => { //
@@ -20,70 +22,73 @@ export default config({
             res.send("It's time to kick ass and chew bubblegum!"); //
         });
 
-        app.post("/matchmaking", async (req, res) => { //
-            const { betValue, gameMode, playerName, mezonId } = req.body;
-            let balance : number;
-            const getBalancePromise = new Promise<IOReturn>((resolve, reject) => {
-                IOInteract.instance.getBalance(mezonId, async (returnData: IOReturn) => {
-                    if (returnData.status == Status.Success) {
-                        resolve(returnData);
-                    } else {
-                        reject(new Error("Failed to retrieve balance: " + returnData.status));
-                    }
-                });
-            });
-
+        app.post("/matchmaking", async (req, res) => {
+            const { type, payload } = req.body;
             try {
-                const returnData: IOReturn = await getBalancePromise;
-                balance = returnData.data.balance;
-            } catch (error) {
-                console.error("Error fetching balance:", error);
-                return res.status(500).json({ error: "An error occurred while fetching balance." });
-            }
+                switch (type) {
+                    case RequestType.FIND_ROOM:
+                        try {
+                            let rooms = (await matchMaker.query({})).filter((_r) =>
+                                _r.name === PVP_SHARE_PRIZE && _r.metadata.betValue === payload.betValue
+                            );
 
-            if (betValue === undefined || betValue === null) { //
-                return res.status(400).json({ error: "betValue is required for matchmaking." }); //
-            }
+                            const availableRoom = rooms.find(room => room.locked === false);
 
-            if (typeof betValue !== 'number' || betValue < 0) { //
-                return res.status(400).json({ error: "betValue must be a non-negative number." }); //
-            }
+                            let roomToJoin;
 
-            const validGameModes = [PVP_RANK_PRIZE, PVP_SHARE_PRIZE]; // Thêm STREAK_ROOM_NAME nếu bạn muốn hỗ trợ
-            if (!validGameModes.includes(gameMode)) {
-                return res.status(400).json({ error: `Invalid gameMode: ${gameMode}. Available modes are: ${validGameModes.join(', ')}` });
-            }
-            
-            if (balance < betValue && balance != null && balance != null) {
-                return res.status(400).json({ error: "Not enough gold to start." }); //
-            }
+                            if (availableRoom) {
+                                roomToJoin = availableRoom;
+                                console.log(`Joining existing room: ${roomToJoin.roomId} with bet: ${payload.betValue}`);
+                            }
+                            else {
+                                const roomOptions = payload;
+                                roomToJoin = await matchMaker.createRoom(PVP_SHARE_PRIZE, roomOptions);
+                                console.log(`Create new room: ${roomToJoin.roomId} with bet: ${payload.betValue}`);
+                            }
 
-            try {
-                let rooms = (await matchMaker.query({})).filter((_r) =>
-                    _r.name === gameMode && _r.metadata.bet === betValue
-                );
+                            return res.json({ success: true, roomId: roomToJoin.roomId });
 
-                const availableRoom = rooms.find(room => room.locked === false);
+                        } catch (err: any) {
+                            console.error("Matchmaking error (FIND_ROOM):", err);
+                            if (err.message && err.message.includes("Max room attempts reached")) {
+                                return res.status(503).json({ success: false, error: "Server busy, please try again." });
+                            }
+                            return res.status(500).json({ success: false, error: "Matchmaking failed unexpectedly." });
+                        }
 
-                let roomToJoin; //
-                let goldAmount = balance;
-                if (availableRoom) { //
-                    roomToJoin = availableRoom; //
-                    console.log(`Joining existing room: ${roomToJoin.roomId} with bet: ${betValue}`); //
-                } else {
-                    const roomOptions = { betValue, gameMode, playerName, goldAmount }; //
-                    roomToJoin = await matchMaker.createRoom(gameMode, roomOptions); //
-                    console.log(`Created new room: ${roomToJoin.roomId} with bet: ${betValue}`); //
+                    case RequestType.GET_LIST_ROOM:
+                        try {
+                            let rooms = (await matchMaker.query({})).filter((_r) => _r.locked === false && _r.name === PVP_SHARE_PRIZE);
+                            return res.json({ success: true, rooms: rooms });
+                        } catch (err: any) {
+                            console.error("Matchmaking error (GET_LIST_ROOM):", err);
+                            return res.status(500).json({ success: false, error: "Failed to retrieve room list unexpectedly." });
+                        }
+
+                    case RequestType.JOIN_ROOM_BY_ID:
+                        try {
+                            let roomToJoin = (await matchMaker.query({})).find((_r) =>
+                                _r.roomId === payload.roomId
+                            );
+
+                            if (!roomToJoin) {
+                                return res.status(404).json({ success: false, error: `Room with ID ${payload.roomId} not found.` });
+                            }
+
+                            return res.json({ success: true, roomId: roomToJoin.roomId });
+
+                        } catch (err: any) {
+                            console.error("Matchmaking error (JOIN_ROOM):", err);
+                            return res.status(500).json({ success: false, error: "Failed to join room by ID unexpectedly." });
+                        }
+
+                    default:
+                        return res.status(400).json({ success: false, error: "Unknown matchmaking event type." });
                 }
-
-                return res.json({ roomId: roomToJoin.roomId }); //
-            } catch (err) {
-                console.error("Matchmaking error:", err); //
-                if (err instanceof Error && err.message.includes("Max room attempts reached")) { //
-                    res.status(503).json({ error: "Server busy, please try again." }); //
-                } else {
-                    res.status(500).json({ error: "Matchmaking failed unexpectedly." }); //
-                }
+            } catch (error: any) {
+                console.error("Matchmaking request failed:", error.message);
+                const statusCode = error.message.includes("betValue") || error.message.includes("Not enough gem") ? 400 : 500;
+                return res.status(statusCode).json({ success: false, error: error.message });
             }
         });
 
@@ -103,6 +108,7 @@ export default config({
         app.use("/monitor", monitor()); //
     },
 
-    beforeListen: async () => { //
+    beforeListen: async () => { 
     }
 });
+

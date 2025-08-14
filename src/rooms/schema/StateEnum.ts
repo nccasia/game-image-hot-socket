@@ -47,11 +47,12 @@ export enum ServerMessage {
   ChoiceList = "NetworkEvent.SendChoiceList",
   UpdateChoiceStatus = "NetworkEvent.UpdateChoiceStatus",
   UpdateChoiceResult = "NetworkEvent.UpdateChoiceResult",
+  UpdateTop = "NetworkEvent.UpdateTop",
   GameEnded = "NetworkEvent.EndGameResult",
+  UpdateGameProgress = "NetworkEvent.UpdateGameProgress",
   
   //Share Prize Mode
   CancelReady = "NetworkEvent.CancelReady",
-  StartGame = "NetworkEvent.StartGame",
   HostUpdate = "NetworkEvent.HostUpdate",
   PreloadBundle = "NetworkEvent.PreloadBundle",
 
