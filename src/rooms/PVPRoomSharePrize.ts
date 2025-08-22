@@ -3,7 +3,6 @@ import { PVPRoomState, ChoiceItem, Player, QuestionItem } from "./schema/PVPRoom
 import * as enums from "./schema/StateEnum";
 import * as interfaces from "./schema/StateInterface";
 import { IOInteract, Status } from "../IOInteract";
-import { json } from "express";
 
 const DEFAULT_MAX_QUESTIONS = 5;
 const RECONNECTION_TIMEOUT_SECONDS = 15;
@@ -25,6 +24,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private selectionSet: QuestionItem[] = [];
   private currentChoiceList: string[] = [];
   private currentBestChoice: string = "";
+  private currencyType: string;
+  private playWithBot: boolean = false;
 
   private listPrepareBundle: string[] = [];
 
@@ -35,7 +36,6 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
   private delayBeforeNextQuestionActive: boolean = false;
 
   private delayBeforeResultActive: boolean = false;
-
 
   private poolPrize: number = 0;
   private winnerResults: interfaces.PlayerGameResult[] = [];
@@ -48,6 +48,14 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.setupMessageHandlers();
     this.setupGameMode();
     this.setupRoomState();
+    this.currencyType = options.currencyType;
+    this.playWithBot = options.playWithBot;  
+
+    if(options.playWithBot) {
+      IOInteract.instance.getBotProfile(options.betValue, async (returnData) => { 
+        this.createBot(returnData)
+      })
+    }
 
     await IOInteract.instance.getQuestion(async (returnData) => {
       if (returnData.status === Status.Success) {
@@ -164,6 +172,10 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       this.createNewPlayer(client, options);
     }
 
+    if(this.playWithBot && this.state.players.size === 2) {
+        this.lock();
+    }
+
     this.broadcastPlayerUpdates();
   }
 
@@ -260,6 +272,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       this.state.questionBroadcastTime = Date.now();
       this.broadcast(enums.ServerMessage.Question, this.currentChoiceList);
       this.setupChoiceCountDown(CHOICE_COUNTDOWN_DURATION_SECONDS);
+      this.botAnswer();
 
       if (this.state.currentQuestionIndex === 0) {
         const updateTopList = this.updateTopPlayers()
@@ -337,6 +350,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     player.userId = options.userId;
     player.mezonId = options.mezonId;
     player.playerName = options.playerName;
+    player.isBot = false;
     // player.playerAvatarURL = options.playerAvatarURL;
     player.isChoiced = false;
     player.isConfirmed = false;
@@ -423,7 +437,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
   private updateHost() {
     const activePlayers = Array.from(this.state.players.values())
-      .filter(p => (p as Player).connectStatus !== enums.PlayerConnectStatus.IsOutGame)
+      .filter(p => (p as Player).connectStatus !== enums.PlayerConnectStatus.IsOutGame && (p as Player).isBot === false)
 
     if (activePlayers.length > 0) {
       const newHost = (activePlayers[0] as Player).sessionId;
@@ -441,6 +455,14 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     if (this.state.roomPhase === enums.GamePhase.PLAYING) {
       this.checkAllPlayersChoiced();
       this.checkPlayerAvailableInRoom();
+    }
+
+    if(this.state.players.size === 1){
+      this.state.players.forEach((p)=> {
+        if(p.isBot){
+          this.state.players.delete(p.sessionId);
+        }
+      })
     }
   }
 
@@ -609,7 +631,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       gameData.push({ userId: player.userId, amount: this.state.betValue })
     })
 
-    IOInteract.instance.startBet(this.roomId, gameData, async () => { })
+    IOInteract.instance.startBet(this.roomId, this.currencyType, gameData, async () => { })
     
     this.broadcastQuestion();
   }
@@ -824,5 +846,47 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       }
     }
     return null;
+  }
+
+  // =================== BOT =====================
+  private createBot(data: any) {
+    const player = new Player();
+    player.sessionId = "";
+    player.userId = data.userId;
+    player.mezonId = "";
+    player.playerName = "(BOT)"+data.username;
+    player.isBot = true;
+    player.isChoiced = false;
+    player.isConfirmed = false;
+    player.isSurrender = false;
+    player.connectStatus = enums.PlayerConnectStatus.IsConnected
+    player.point = 0;
+    player.answerTime = 0;
+    player.currentResult = "";
+    player.lastActionTime = Date.now();
+    this.state.players.set(player.sessionId, player);
+  }
+
+  private botAnswer(){
+    this.state.players.forEach(_p => {
+      if(_p.isBot){
+        _p.isChoiced = true;
+
+        const answerTime = (Date.now() - (this.state.questionBroadcastTime || Date.now())) / 1000;
+        _p.answerTime += answerTime;
+
+        let answer = this.getRandomElements(this.currentChoiceList, 1)
+
+        _p.currentResult = answer[0];
+        if (_p.currentResult === this.currentBestChoice) {
+          _p.point++;
+        }
+
+        // khả năng sẽ bỏ nếu là bot chọn
+        this.selectionSet[this.state.currentQuestionIndex].choiceList.forEach(choice => {
+          if (_p.currentResult === choice.photo_id) choice.vote++;
+        })
+      }
+    })
   }
 }

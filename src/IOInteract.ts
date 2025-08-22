@@ -94,9 +94,20 @@ export class IOInteract {
         });
     }
 
-    startBet(gameId: string, gameData: any, onSuccess: (response: IOReturn) => Promise<void>) {
+    getBotProfile(candyAmount: number, onSuccess: (response: any) => Promise<void>) {
         return new Promise((resolve, reject) => {
-            this.BE_socket.emit('betGame', { hash: this.hash, gameId: gameId, gameData: gameData }, async (callbackData: IOReturn) => {
+            this.BE_socket.emit('getBotProfile', { hash: this.hash, candyAmount: candyAmount }, async (callbackData: any) => {
+                 if (onSuccess) {
+                    await onSuccess(callbackData.data);
+                }
+                resolve(callbackData.data);
+            });
+        });
+    }
+
+    startBet(gameId: string, currencyType: string, gameData: any, onSuccess: (response: IOReturn) => Promise<void>) {
+        return new Promise((resolve, reject) => {
+            this.BE_socket.emit('betGame', { hash: this.hash, gameId: gameId, currencyType: currencyType, gameData: gameData }, async (callbackData: IOReturn) => {
                 if (onSuccess) {
                     await onSuccess(callbackData);
                 }

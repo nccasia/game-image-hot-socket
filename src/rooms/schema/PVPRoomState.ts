@@ -6,6 +6,7 @@ export class Player extends Schema{
   @type("string") userId: string;
   @type("string") mezonId: string;
   @type("string") playerName: string;
+  @type("boolean") isBot: boolean = false;
   @type("string") playerAvatarURL: string;
   @type("number") answerTime: number = 0;
   @type("number") point: number = 0;

@@ -10,6 +10,11 @@ export enum GamePhase {
   ENDED = "ended"
 }
 
+export enum CurrencyType {
+  Token = "token",
+  Candy = "candy"
+}
+
 export enum PlayerConnectStatus{
   IsConnected = "isConnected",
   IsDisconnected = "isDisconnected",

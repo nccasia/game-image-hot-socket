@@ -20,7 +20,9 @@ export interface OptionData {
   mezonId: string,
   userId: string,
   betValue: number,
-  roomId: string
+  roomId: string,
+  currencyType: string;
+  playWithBot: boolean;
 }
 
 export interface ChoiceOption {

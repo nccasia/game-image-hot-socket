@@ -11,8 +11,6 @@ export class LobbyRoom extends Room<LobbyState> {
     private pollingInterval: NodeJS.Timeout | null = null;
 
     async onCreate(options: any) {
-        await this.updateRoomList();
-        
         this.pollingInterval = setInterval(async () => {
             await this.updateRoomList();
         }, 3000);
