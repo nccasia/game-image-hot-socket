@@ -384,29 +384,28 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
         const client = this.clients.getById(sessionId);
         if (client) {
           client.send(enums.ServerMessage.PreloadBundle, this.listPrepareBundle);
-
           client.send(enums.ServerMessage.Question, this.currentChoiceList);
+          client.send(enums.ServerMessage.UpdateTop, this.updateTopPlayers());
           console.log(`Sent current question and choice list to reconnected player ${sessionId}.`);
         }
       }
       else if (this.state.roomPhase === enums.GamePhase.ENDED) {
         const client = this.clients.getById(sessionId);
 
-        if (client) {
-          const formattedResult: interfaces.UpdatePlayerResult[] = this.winnerResults.map(({ player, reward, rank }) => ({
-            userId: player.userId,
-            mezonId: player.mezonId,
-            nickname: player.playerName,
-            point: player.point,
-            reward,
-            rank: rank ?? null,
-          }));
+        const result = this.winnerResults.map(({ player, reward, rank, isWinner }) => ({
+          sessionId: player.sessionId,
+          userId: player.userId,
+          nickname: player.playerName,
+          point: player.point,
+          reward,
+          rank: rank ?? null,
+          isWinner,
+        }));
 
-          client.send(enums.ServerMessage.GameEnded, {
-            gameMode: this.state.gameMode,
-            result: formattedResult
-          });
-        }
+        client.send(enums.ServerMessage.GameEnded, {
+          gameMode: this.state.gameMode,
+          result: result,
+        });
       }
     }
   }
@@ -632,7 +631,7 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     })
 
     IOInteract.instance.startBet(this.roomId, this.currencyType, gameData, async () => { })
-    
+    this.broadcast(enums.ServerMessage.StartGame);
     this.broadcastQuestion();
   }
 

@@ -47,6 +47,7 @@ export enum ClientMessage {
 // Enum cho các loại tin nhắn gửi đến client (đảm bảo đồng bộ với NetworkEvent ở client)
 export enum ServerMessage {
   //Summary
+  StartGame = "NetworkEvent.StartGame",
   PlayersUpdate = "NetworkEvent.PlayersUpdate",
   Question = "NetworkEvent.Question",
   ChoiceList = "NetworkEvent.SendChoiceList",
