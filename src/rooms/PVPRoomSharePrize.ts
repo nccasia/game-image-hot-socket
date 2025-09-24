@@ -160,6 +160,10 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
     this.onMessage(enums.ClientMessage.StartReady, (client) => this.changeConfirmPhase(client));
     this.onMessage(enums.ClientMessage.Choiced, (client, answer: string) => this.handlePlayerChoice(client, answer));
     this.onMessage(enums.ClientMessage.GetChoiceList, (client) => this.sendChoiceListToClient(client));
+    this.onMessage(enums.ClientMessage.TutorialStartCountDown, (client) => {
+      this.setupChoiceCountDown(CHOICE_COUNTDOWN_DURATION_SECONDS)
+      this.state.isTutorial = false;
+    });
   }
 
   // ==================== PLAYER ACTIONS HANDLERS ====================
@@ -271,7 +275,9 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
 
       this.state.questionBroadcastTime = Date.now();
       this.broadcast(enums.ServerMessage.Question, this.currentChoiceList);
-      this.setupChoiceCountDown(CHOICE_COUNTDOWN_DURATION_SECONDS);
+      if(!this.state.isTutorial){
+        this.setupChoiceCountDown(CHOICE_COUNTDOWN_DURATION_SECONDS);
+      }
       this.botAnswer();
 
       if (this.state.currentQuestionIndex === 0) {
@@ -338,6 +344,8 @@ export class PVPRoomSharePrize extends Room<PVPRoomState> {
       this.setMetadata({ bet: 0 });
       this.state.betValue = 0;
     }
+
+    this.state.isTutorial = options.isTutorial;
   }
 
   private setupGameMode(): void {

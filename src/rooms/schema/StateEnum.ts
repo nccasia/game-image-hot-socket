@@ -42,6 +42,7 @@ export enum ClientMessage {
   StartReady = "NetworkEvent.StartReady",
   ConfirmReady = "NetworkEvent.ConfirmReady",
   NotReady = "NetworkEvent.NotReady",
+  TutorialStartCountDown = "NetworkEvent.TutorialStartCountDown",
 }
 
 // Enum cho các loại tin nhắn gửi đến client (đảm bảo đồng bộ với NetworkEvent ở client)

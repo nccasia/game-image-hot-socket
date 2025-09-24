@@ -21,6 +21,7 @@ export interface OptionData {
   userId: string,
   betValue: number,
   roomId: string,
+  isTutorial: boolean,
   currencyType: string;
   playWithBot: boolean;
 }

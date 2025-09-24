@@ -42,6 +42,7 @@ export class PVPRoomState extends Schema{
   @type("number") betValue: number;
   @type("string") roomPhase = GamePhase.WAITTING;
   @type("string") hostId: string;
+  @type("boolean") isTutorial: boolean;
   @type("number") remainingConfirmTime: number;
   @type("number") remainingChoiceTime: number;
   @type("number") questionBroadcastTime: number = 0;
